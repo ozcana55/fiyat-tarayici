@@ -1,5 +1,6 @@
 import time
 import io
+import os
 import pandas as pd
 import streamlit as st
 from selenium import webdriver
@@ -14,17 +15,29 @@ st.set_page_config(page_title="Fiyat Tarayıcı", page_icon="🔍", layout="cent
 st.title("🔍 Akakçe Fiyat Karşılaştırma Botu")
 st.write("Aratmak istediğiniz ürünü girin, güncel fiyatları bulup Excel olarak indirelim.")
 
-# --- SÜRÜCÜ HAZIRLAMA ---
+# --- SÜRÜCÜ HAZIRLAMA (Bulut ve Yerel Uyumlu) ---
 def surucu_baslat():
     options = Options()
-    options.add_argument("--headless")  # Arka planda çalışması için (Web sitelerinde ekran açılmaz)
+    options.add_argument("--headless=new") # Arka plan modu
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
     options.add_argument("--disable-notifications")
     options.add_argument("--disable-popup-blocking")
     options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
     
-    return webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    # Linux / Streamlit Cloud üzerinde Chromium kontrolü
+    chromium_path = "/usr/bin/chromium"
+    chromedriver_path = "/usr/bin/chromedriver"
+    
+    if os.path.exists(chromium_path) and os.path.exists(chromedriver_path):
+        options.binary_location = chromium_path
+        service = Service(chromedriver_path)
+    else:
+        # Bilgisayarda lokal çalışıyorsa
+        service = Service(ChromeDriverManager().install())
+
+    return webdriver.Chrome(service=service, options=options)
 
 # --- VERİ ÇEKME FONKSİYONU ---
 def akakce_arama(kelime):
@@ -91,7 +104,7 @@ def akakce_arama(kelime):
     finally:
         driver.quit()
 
-# --- STREAMLIT ARAYÜZÜ ---
+# --- ARAYÜZ ---
 aranan_urun = st.text_input("Aratılacak Ürün:", placeholder="Örn: Playstation 5, Toshiba 65 TV, Bebek Arabası")
 
 if st.button("Fiyatları Getir", type="primary"):
@@ -103,10 +116,8 @@ if st.button("Fiyatları Getir", type="primary"):
                 df = pd.DataFrame(veri)
                 st.success(f"Başarılı! **{len(veri)}** adet ürün bulundu.")
                 
-                # Tabloyu Ekranda Göster
                 st.dataframe(df[["Ürün / Model Adı", "En Uygun Fiyat", "Satıcı / Mağaza Bilgisi"]], use_container_width=True)
                 
-                # Excel Dosyasını Bellekte Oluşturup İndirme Butonu Koyma
                 buffer = io.BytesIO()
                 with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                     df.to_excel(writer, index=False)
