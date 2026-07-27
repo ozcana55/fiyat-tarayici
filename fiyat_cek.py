@@ -15,18 +15,22 @@ st.set_page_config(page_title="Fiyat Tarayıcı", page_icon="🔍", layout="cent
 st.title("🔍 Akakçe Fiyat Karşılaştırma Botu")
 st.write("Aratmak istediğiniz ürünü girin, güncel fiyatları bulup Excel olarak indirelim.")
 
-# --- SÜRÜCÜ HAZIRLAMA (Bulut ve Yerel Uyumlu) ---
+# --- SÜRÜCÜ HAZIRLAMA (Anti-Bot Engeli Aşma Özellikli) ---
 def surucu_baslat():
     options = Options()
-    options.add_argument("--headless=new") # Arka plan modu
+    options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
     options.add_argument("--disable-notifications")
     options.add_argument("--disable-popup-blocking")
-    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
     
-    # Linux / Streamlit Cloud üzerinde Chromium kontrolü
+    # Bot algılamayı kapatan kritik bayraklar (Stealth Mode)
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_experimental_option('useAutomationExtension', False)
+    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+    
     chromium_path = "/usr/bin/chromium"
     chromedriver_path = "/usr/bin/chromedriver"
     
@@ -34,10 +38,20 @@ def surucu_baslat():
         options.binary_location = chromium_path
         service = Service(chromedriver_path)
     else:
-        # Bilgisayarda lokal çalışıyorsa
         service = Service(ChromeDriverManager().install())
 
-    return webdriver.Chrome(service=service, options=options)
+    driver = webdriver.Chrome(service=service, options=options)
+    
+    # JavaScript ile webdriver gizleme
+    driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
+        'source': '''
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined
+            })
+        '''
+    })
+    
+    return driver
 
 # --- VERİ ÇEKME FONKSİYONU ---
 def akakce_arama(kelime):
@@ -46,8 +60,18 @@ def akakce_arama(kelime):
     
     try:
         driver.get(arama_url)
-        time.sleep(3)
-        driver.execute_script("window.scrollTo(0, 800);")
+        time.sleep(4) # Sayfanın yüklenmesini bekle
+        
+        # Çerez Uyarısını Kapatma Denemesi
+        try:
+            cerez = driver.find_element(By.XPATH, "//button[contains(text(),'Kabul') or contains(text(),'Anladım') or contains(text(),'Tamam')]")
+            cerez.click()
+            time.sleep(1)
+        except:
+            pass
+
+        # Sayfayı kaydır
+        driver.execute_script("window.scrollTo(0, 600);")
         time.sleep(2)
         
         urun_listesi = []
@@ -105,7 +129,7 @@ def akakce_arama(kelime):
         driver.quit()
 
 # --- ARAYÜZ ---
-aranan_urun = st.text_input("Aratılacak Ürün:", placeholder="Örn: Playstation 5, Toshiba 65 TV, Bebek Arabası")
+aranan_urun = st.text_input("Aratılacak Ürün:", placeholder="Örn: Playstation 5, Toshiba 65 TV, iphone 13")
 
 if st.button("Fiyatları Getir", type="primary"):
     if aranan_urun.strip():
@@ -131,6 +155,6 @@ if st.button("Fiyatları Getir", type="primary"):
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
             else:
-                st.error("Ürün bulunamadı veya veri çekilemedi.")
+                st.error("Ürün bulunamadı veya Akakçe bot koruması devreye girdi. Lütfen birkaç saniye sonra tekrar deneyin.")
     else:
         st.warning("Lütfen bir ürün adı girin!")
